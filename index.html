@@ -563,6 +563,59 @@
       .title { font-size: 18px; }
       #conn-last, #conn-detail { max-width: 170px; }
     }
+    /* ---------- Prestazioni e consumi ---------- */
+    #perf-card { min-width: 0; }
+    .perf-body { padding: 8px 16px 16px; font-size: 14px; min-width: 0; }
+    .perf-body p { margin: 0 0 8px; }
+    .perf-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--ink-soft); margin: 4px 0 12px; }
+    .perf-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .q { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+         border-radius: 999px; padding: 1px 6px; margin-left: 4px; vertical-align: middle; white-space: nowrap; }
+    .q-M { color: var(--working); background: var(--working-bg); }
+    .q-D { color: var(--done); background: var(--done-bg); }
+    .q-S { color: var(--waiting); background: var(--waiting-bg); }
+    .q-N { color: var(--idle); background: var(--idle-bg); border: 1px dashed var(--ink-faint); }
+    .perf-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 13px; }
+    .perf-crumbs button, .perf-sort button, .perf-more {
+      border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 6px 12px; color: var(--ink-soft);
+    }
+    .perf-crumbs button[aria-current="page"], .perf-sort button[aria-pressed="true"] {
+      background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 650;
+    }
+    .perf-sort { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; font-size: 12px; }
+    .perf-h3 { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); margin: 18px 0 6px; }
+    .perf-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0 4px; }
+    .perf-kpi { border: 1px solid var(--line); background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+    .perf-kpi .k { font-size: 11px; color: var(--ink-faint); }
+    .perf-kpi .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .perf-kpi .s { font-size: 11px; color: var(--ink-soft); overflow-wrap: anywhere; }
+    .ptable { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .ptable th { text-align: left; font-size: 11px; font-weight: 650; color: var(--ink-faint); padding: 6px 6px; border-bottom: 1px solid var(--line-strong); }
+    .ptable td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .ptable tr.click { cursor: pointer; }
+    .ptable tr.click:hover td { background: var(--bg-muted); }
+    .ptable td.num, .ptable th.num { text-align: right; white-space: nowrap; }
+    .ptable .sub { display: block; font-size: 11px; color: var(--ink-faint); }
+    .ptable tr.mon td { color: var(--ink-soft); font-style: italic; }
+    .pchart { width: 100%; max-width: 620px; height: auto; display: block; margin: 4px 0 6px; }
+    .pchart text { fill: var(--ink-soft); font-size: 11px; font-family: var(--font); }
+    .pchart .lab { fill: var(--ink); }
+    .perf-note { font-size: 12px; color: var(--ink-faint); margin: 6px 0 0; }
+    .perf-notes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-soft); }
+    .perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+    .perf-grid > div { min-width: 0; }
+    .perf-runhead { border: 1px solid var(--line); background: var(--bg-muted); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+    .perf-runhead div { margin: 2px 0; overflow-wrap: anywhere; }
+    .perf-more { margin-top: 8px; }
+    @media (max-width: 900px) { .perf-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) {
+      .ptable, .ptable tbody, .ptable tr, .ptable td { display: block; width: 100%; }
+      .ptable thead { display: none; }
+      .ptable tr { border-bottom: 1px solid var(--line); padding: 8px 2px; }
+      .ptable td { border: 0; padding: 2px 4px; text-align: left !important; white-space: normal !important; }
+      .ptable td[data-l]::before { content: attr(data-l) ": "; color: var(--ink-faint); font-size: 11px; }
+      .ptable td:first-child { font-weight: 650; }
+    }
   </style>
 </head>
 <body>
@@ -642,6 +695,14 @@
           <div class="log" id="history"></div>
         </section>
       </div>
+
+      <section class="card" id="perf-card">
+        <div class="card-h">
+          <h2>Prestazioni e consumi</h2>
+          <div class="meta" id="perf-meta"><span class="period-tag">Aggiornato periodicamente</span></div>
+        </div>
+        <div class="perf-body" id="perf"></div>
+      </section>
     </main>
   </div>
   <script>
@@ -893,6 +954,502 @@
       return id;
     }
 
+
+    /* ---------- Prestazioni e consumi (dati periodici, non live) ---------- */
+    var LS_PERF = "regia.dashboard.perf.v1:";
+    var PERF_MAX_RUNS = 4000;
+    var perf = { summary: null, trend: null, runs: Object.create(null) };
+    var perfView = { level: "overview", bot: null, run: null, sort: "quota", limit: 60 };
+    var PERF_CATS = {
+      RW: "Ricerca web", SC: "Siti consultati", DOC: "Lettura PDF/documenti", IMG: "Analisi foto/immagini",
+      PRZ: "Confronti prezzi/prodotti", AI: "Elaborazione AI delegata", CMD: "Comandi e script",
+      COM: "Comunicazioni", REP: "Report e pagine", CFG: "Memoria/routine/configurazione",
+      MON: "Monitoraggio e dashboard", MCP: "Connettori esterni", ALT: "Altro"
+    };
+    var PERF_TRIG = {
+      chat: "Turno chat", voce: "Turno da canale/voce", bot: "Messaggio da bot", bg: "Esito attività in background",
+      routine: "Routine", card: "Risposta a scheda", sys: "Sollecito di sistema", first: "Primo avvio",
+      stato: "Turno (da eventi di stato)"
+    };
+    var PERF_OUT = { c: "Completato", a: "In attesa di te", e: "Errore", s: "Senza messaggio", n: "Nessuna azione", i: "Non chiuso" };
+    var PERF_RES = { ok: "ok", err: "errore", parz: "errori parziali", att: "attesa utente", bg: "in background" };
+    var Q_LABEL = { M: "Misurato", D: "Derivato", S: "Stima", N: "Non disponibile" };
+    var Q_SHORT = { M: "mis.", D: "der.", S: "stima", N: "n/d" };
+
+    function perfLoad() {
+      perf = { summary: null, trend: null, runs: Object.create(null) };
+      var raw = storeGet(LS_PERF + topic);
+      if (!raw) return;
+      try {
+        var d = JSON.parse(raw);
+        if (d && typeof d === "object") {
+          perf.summary = d.summary || null;
+          perf.trend = d.trend || null;
+          if (d.runs && typeof d.runs === "object") {
+            Object.keys(d.runs).forEach(function (k) { perf.runs[k] = d.runs[k]; });
+          }
+        }
+      } catch (e) {}
+    }
+    function perfPersist() {
+      var ids = Object.keys(perf.runs);
+      if (ids.length > PERF_MAX_RUNS) {
+        ids.sort(function (a, b) { return (perf.runs[a].t || 0) - (perf.runs[b].t || 0); });
+        ids.slice(0, ids.length - PERF_MAX_RUNS).forEach(function (k) { delete perf.runs[k]; });
+      }
+      storeSet(LS_PERF + topic, JSON.stringify({ summary: perf.summary, trend: perf.trend, runs: perf.runs }));
+    }
+    function perfIngest(payload) {
+      if (!payload || typeof payload !== "object") return false;
+      var ts = parseTs(payload.ts, 0);
+      if (payload.type === "perf_summary") {
+        if (!perf.summary || parseTs(perf.summary.ts, 0) <= ts) perf.summary = payload;
+        return true;
+      }
+      if (payload.type === "perf_trend") {
+        if (!perf.trend || parseTs(perf.trend.ts, 0) <= ts) perf.trend = payload;
+        return true;
+      }
+      if (payload.type === "perf_runs" && Array.isArray(payload.runs)) {
+        var names = Array.isArray(payload.bots) ? payload.bots : [];
+        payload.runs.forEach(function (r) {
+          if (!Array.isArray(r) || !r[0]) return;
+          var id = String(r[0]).slice(0, 40);
+          var prev = perf.runs[id];
+          if (prev && prev.ts > ts) return;
+          perf.runs[id] = {
+            id: id, ts: ts,
+            bot: String(names[r[1]] || "?").slice(0, 40),
+            t: typeof r[2] === "number" ? r[2] * 60000 : 0,
+            trig: String(r[3] || ""), dur: typeof r[4] === "number" ? r[4] : null, durQ: String(r[5] || "N"),
+            out: String(r[6] || "i"), label: r[7] ? String(r[7]).slice(0, 60) : "",
+            quota: Array.isArray(r[8]) ? r[8] : null, mon: r[9] ? 1 : 0,
+            ops: Array.isArray(r[10]) ? r[10] : []
+          };
+        });
+        return true;
+      }
+      return false;
+    }
+
+    function qb(code, title) {
+      var s = elmt("span", "q q-" + code);
+      text(s, Q_SHORT[code] || code);
+      s.title = (Q_LABEL[code] || code) + (title ? " · " + title : "");
+      return s;
+    }
+    function cellNum(td, value, code, title) {
+      var v = elmt("span");
+      text(v, value);
+      td.appendChild(v);
+      td.appendChild(qb(code, title));
+      return td;
+    }
+    function fmtMs(ms) {
+      if (ms == null) return "—";
+      var s = ms / 1000;
+      if (s < 60) return fmtNum(s, s < 10 ? 1 : 0) + " s";
+      var m = s / 60;
+      if (m < 60) return fmtNum(m, 1) + " min";
+      return fmtNum(m / 60, 1) + " h";
+    }
+    function fmtPct(v, lt1) {
+      if (v == null) return "—";
+      if (lt1) return "<1%";
+      return fmtNum(v, v < 1 ? 2 : 1) + "%";
+    }
+    function fmtLim(v, lt1) {
+      if (v == null) return "—";
+      if (lt1 && v < 0.1) return "<0,1%";
+      return fmtNum(v, v < 1 ? 2 : 1) + "%";
+    }
+    function perfTable(head, rows, numCols) {
+      var tb = elmt("table", "ptable");
+      var th = elmt("thead"), tr = elmt("tr");
+      head.forEach(function (hd, i) {
+        var c = elmt("th", numCols && numCols[i] ? "num" : "");
+        text(c, hd);
+        tr.appendChild(c);
+      });
+      th.appendChild(tr); tb.appendChild(th);
+      var body = elmt("tbody");
+      rows.forEach(function (r) { body.appendChild(r); });
+      tb.appendChild(body);
+      return tb;
+    }
+    function td(label, cls) {
+      var c = elmt("td", cls || "");
+      if (label) c.setAttribute("data-l", label);
+      return c;
+    }
+    function barChart(items, unit, max) {
+      // items: [{label, value, code}] -> SVG orizzontale semplice
+      var w = 560, rowH = 24, pad = 4, labelW = 170;
+      var h = items.length * rowH + pad * 2;
+      var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+      svg.setAttribute("class", "pchart");
+      svg.setAttribute("role", "img");
+      var top = max || Math.max.apply(null, items.map(function (i) { return i.value || 0; }).concat([0.0001]));
+      items.forEach(function (it, i) {
+        var y = pad + i * rowH;
+        var t = document.createElementNS(svg.namespaceURI, "text");
+        t.setAttribute("x", 0); t.setAttribute("y", y + 16); t.setAttribute("class", "lab");
+        t.textContent = it.label.length > 24 ? it.label.slice(0, 23) + "…" : it.label;
+        svg.appendChild(t);
+        var bw = Math.max(it.value > 0 ? 2 : 0, (w - labelW - 150) * (it.value || 0) / top);
+        var r = document.createElementNS(svg.namespaceURI, "rect");
+        r.setAttribute("x", labelW); r.setAttribute("y", y + 5); r.setAttribute("height", 14); r.setAttribute("rx", 4);
+        r.setAttribute("width", bw);
+        r.setAttribute("fill", it.color || cssVar("--accent", "#7ee0d0"));
+        if (it.code === "S" || it.code === "N") r.setAttribute("fill-opacity", "0.45");
+        svg.appendChild(r);
+        var v = document.createElementNS(svg.namespaceURI, "text");
+        v.setAttribute("x", labelW + bw + 6); v.setAttribute("y", y + 16);
+        v.textContent = it.text + (it.code ? " · " + Q_SHORT[it.code] : "");
+        svg.appendChild(v);
+      });
+      return svg;
+    }
+    function botColor(name) { return "hsl(" + hashHue(name) + " 60% 58%)"; }
+    function perfGo(level, bot, run) {
+      perfView.level = level; perfView.bot = bot || null; perfView.run = run || null;
+      if (level !== "bot") perfView.limit = 60;
+      renderPerf();
+      var card = document.getElementById("perf-card");
+      if (card && card.scrollIntoView && level !== "overview") card.scrollIntoView({ block: "start" });
+    }
+    function botRows() {
+      var s = perf.summary;
+      if (!s || !Array.isArray(s.bots)) return [];
+      return s.bots.map(function (b) {
+        return { name: b[0], group: b[1], runs7: b[2], runsWeek: b[3], completed7: b[4], err7: b[5], wait7: b[6], retry7: b[7],
+          calls7: b[8], shellMs: b[9], durS: b[10], durN: b[11], lim: b[12], limLt: !!b[13], s7: b[14], s7Lt: !!b[15], eff: b[16], runsAll: b[17] };
+      });
+    }
+
+    function renderPerf() {
+      var root = document.getElementById("perf");
+      var meta = document.getElementById("perf-meta");
+      if (!root) return;
+      root.innerHTML = "";
+      meta.innerHTML = "";
+      var tag = elmt("span", "period-tag");
+      var s = perf.summary;
+      text(tag, s && s.ts ? "Aggiornato periodicamente · dato del " + fmtDateTime(parseTs(s.ts, 0)) : "Aggiornato periodicamente");
+      meta.appendChild(tag);
+      if (!s) {
+        var p = elmt("p", "faint");
+        text(p, "I dati su prestazioni e consumi non sono ancora arrivati. Arrivano con la raccolta giornaliera e restano salvati in questo browser.");
+        root.appendChild(p);
+        return;
+      }
+      var leg = elmt("div", "perf-legend");
+      [["M", "dato misurato"], ["D", "calcolato da dati misurati"], ["S", "stima (limite massimo)"], ["N", "dato non disponibile"]].forEach(function (x) {
+        var sp = elmt("span"); sp.appendChild(qb(x[0])); var t = elmt("span"); text(t, Q_LABEL[x[0]] + ": " + x[1]); sp.appendChild(t); leg.appendChild(sp);
+      });
+      root.appendChild(leg);
+      var crumbs = elmt("div", "perf-crumbs");
+      function crumb(label, level, bot, current) {
+        var b = elmt("button"); b.type = "button"; text(b, label);
+        if (current) b.setAttribute("aria-current", "page");
+        b.addEventListener("click", function () { perfGo(level, bot, null); });
+        crumbs.appendChild(b);
+      }
+      crumb("Panoramica", "overview", null, perfView.level === "overview");
+      if (perfView.bot) crumb(perfView.bot, "bot", perfView.bot, perfView.level === "bot");
+      if (perfView.level === "run" && perfView.run) {
+        var cur = elmt("button"); cur.type = "button"; cur.setAttribute("aria-current", "page"); text(cur, "Esecuzione"); crumbs.appendChild(cur);
+      }
+      root.appendChild(crumbs);
+      if (perfView.level === "run" && perf.runs[perfView.run]) renderPerfRun(root, perf.runs[perfView.run]);
+      else if (perfView.level === "bot" && perfView.bot) renderPerfBot(root, perfView.bot);
+      else renderPerfOverview(root, s);
+    }
+
+    function renderPerfOverview(root, s) {
+      var u = s.usage || {};
+      var k = elmt("div", "perf-kpis");
+      function kpi(label, value, code, sub, title) {
+        var d = elmt("div", "perf-kpi");
+        var a = elmt("div", "k"); text(a, label); d.appendChild(a);
+        var v = elmt("div", "v"); text(v, value); v.appendChild(qb(code, title)); d.appendChild(v);
+        if (sub) { var c = elmt("div", "s"); text(c, sub); d.appendChild(c); }
+        k.appendChild(d);
+      }
+      kpi("Limite settimanale usato", u.limit_pct != null ? fmtNum(u.limit_pct) + "%" : "—", u.limit_pct != null ? "M" : "N",
+        u.shared ? "condiviso con le altre app del piano" : "", "dal report della piattaforma");
+      kpi("di cui Grok Bot", u.grok_pct != null ? fmtNum(u.grok_pct) + "%" : "—", u.grok_pct != null ? "M" : "N",
+        u.resets ? "rinnovo " + fmtDateTime(parseTs(u.resets, 0)) : "");
+      var mon = s.mon || {};
+      kpi("Costo del monitoraggio", mon.q === "D" ? fmtLim(mon.lim, mon.lt1) + " del limite" : "Non disponibile", mon.q === "D" ? "D" : "N",
+        mon.q === "D" ? (fmtPct(mon.share, mon.lt1) + " dell'uso Grok Bot della settimana · routine «" + (mon.routine || "") + "»") : (mon.why || ""),
+        "quota della routine di raccolta, derivata dal report dei consumi");
+      var q = s.q || {};
+      kpi("Esecuzioni analizzate", fmtNum(q.runs || 0, 0), "M",
+        "fine misurata: " + (q.end_M || 0) + " · non disponibile: " + (q.end_N || 0));
+      root.appendChild(k);
+
+      // Classifica Bot
+      var h3 = elmt("div", "perf-h3"); text(h3, "Classifica Bot · ultimi 7 giorni"); root.appendChild(h3);
+      var sortBar = elmt("div", "perf-sort");
+      [["quota", "Consumo"], ["durata", "Durata misurata"], ["eff", "Efficienza"], ["runs", "Esecuzioni"], ["err", "Errori"]].forEach(function (x) {
+        var b = elmt("button"); b.type = "button"; text(b, x[1]);
+        b.setAttribute("aria-pressed", perfView.sort === x[0] ? "true" : "false");
+        b.addEventListener("click", function () { perfView.sort = x[0]; renderPerf(); });
+        sortBar.appendChild(b);
+      });
+      root.appendChild(sortBar);
+      var rows = botRows();
+      var key = {
+        quota: function (b) { return (b.s7 != null ? b.s7 : -1) * 1000 + (b.lim || 0); },
+        durata: function (b) { return (b.durS || 0) * 1e6 + (b.shellMs || 0); },
+        eff: function (b) { return b.eff == null ? -1 : b.eff; },
+        runs: function (b) { return b.runs7; },
+        err: function (b) { return b.err7; }
+      }[perfView.sort];
+      rows.sort(function (a, b) { return key(b) - key(a); });
+      var trs = rows.map(function (b) {
+        var tr = elmt("tr", "click");
+        tr.addEventListener("click", function () { perfGo("bot", b.name, null); });
+        var c0 = td(""); var nm = elmt("span"); text(nm, b.name); c0.appendChild(nm);
+        var sg = elmt("span", "sub"); text(sg, b.group || ""); c0.appendChild(sg); tr.appendChild(c0);
+        tr.appendChild(cellNum(td("Quota 7 gg", "num"), fmtPct(b.s7, b.s7Lt), b.s7 != null ? "M" : "N", "quota dell'uso Grok Bot negli ultimi 7 giorni, dal report"));
+        tr.appendChild(cellNum(td("Settimana (limite)", "num"), fmtLim(b.lim, b.limLt), b.lim != null ? "D" : "N", "quota Bot × % Grok Bot del limite settimanale"));
+        tr.appendChild(cellNum(td("Esecuzioni", "num"), fmtNum(b.runs7, 0), "M"));
+        var dc = td("Durata misurata", "num");
+        cellNum(dc, b.durN ? fmtMs(b.durS * 1000) : "n/d", b.durN ? "M" : "N", "solo esecuzioni chiuse da un evento di stato");
+        var ds = elmt("span", "sub"); text(ds, (b.durN || 0) + " su " + b.runs7 + " · comandi " + fmtMs(b.shellMs)); dc.appendChild(ds);
+        tr.appendChild(dc);
+        var ec = td("Errori/attese", "num"); text(ec, b.err7 + " / " + b.wait7); ec.appendChild(qb("M")); tr.appendChild(ec);
+        tr.appendChild(cellNum(td("Efficienza", "num"), b.eff == null ? "n/d" : fmtNum(b.eff, 1), b.eff == null ? "N" : "D",
+          "esecuzioni completate questa settimana per 1% del limite"));
+        return tr;
+      });
+      if (mon && (mon.runs || mon.q === "D")) {
+        var tr = elmt("tr", "mon");
+        var c0 = td(""); text(c0, "Regia · monitoraggio"); tr.appendChild(c0);
+        tr.appendChild(cellNum(td("Quota 7 gg", "num"), mon.q === "D" ? fmtPct(mon.share, mon.lt1) : "n/d", mon.q === "D" ? "D" : "N"));
+        tr.appendChild(cellNum(td("Settimana (limite)", "num"), mon.q === "D" ? fmtLim(mon.lim, mon.lt1) : "n/d", mon.q === "D" ? "D" : "N"));
+        tr.appendChild(cellNum(td("Esecuzioni", "num"), fmtNum(mon.runs || 0, 0), "M"));
+        var d1 = td("Durata misurata", "num"); text(d1, "—"); tr.appendChild(d1);
+        var d2 = td("Errori/attese", "num"); text(d2, "—"); tr.appendChild(d2);
+        var d3 = td("Efficienza", "num"); text(d3, "—"); tr.appendChild(d3);
+        trs.push(tr);
+      }
+      root.appendChild(perfTable(["Bot", "Quota 7 gg", "Settimana (limite)", "Esecuzioni", "Durata misurata", "Errori/attese", "Efficienza"], trs,
+        [0, 1, 1, 1, 1, 1, 1]));
+      var note = elmt("p", "perf-note");
+      text(note, "Quota 7 gg: quota dell'uso Grok Bot negli ultimi 7 giorni (giorni UTC). Settimana: percentuale del limite settimanale usata dal Bot. Il monitoraggio è escluso dalle righe dei Bot e mostrato a parte. Tocca un Bot per le sue esecuzioni.");
+      root.appendChild(note);
+
+      var grid = elmt("div", "perf-grid");
+      var left = elmt("div"), right = elmt("div");
+      grid.appendChild(left); grid.appendChild(right);
+      root.appendChild(grid);
+      var h4 = elmt("div", "perf-h3"); text(h4, "Consumo per Bot · 7 giorni"); left.appendChild(h4);
+      left.appendChild(barChart(rows.filter(function (b) { return b.s7 != null; }).sort(function (a, b) { return b.s7 - a.s7; }).map(function (b) {
+        return { label: b.name, value: b.s7, text: fmtPct(b.s7, b.s7Lt), code: "M", color: botColor(b.name) };
+      }), "%", 100));
+      var h5 = elmt("div", "perf-h3"); text(h5, "Consumo per tipo di attività · settimana"); right.appendChild(h5);
+      var ua = Array.isArray(s.uact) ? s.uact : [];
+      if (ua.length) {
+        right.appendChild(barChart(ua.map(function (x) {
+          return { label: x[0] + " · " + x[1], value: x[4] || 0, text: fmtLim(x[4], x[3]) + " del limite", code: "D", color: botColor(x[0]) };
+        })));
+      } else { var e1 = elmt("p", "faint"); text(e1, "Non disponibile."); right.appendChild(e1); }
+
+      // Operazioni
+      var h6 = elmt("div", "perf-h3"); text(h6, "Operazioni più dispendiose · 7 giorni"); root.appendChild(h6);
+      var cats = Array.isArray(s.cats) ? s.cats.slice() : [];
+      var crow = cats.map(function (c) {
+        var tr = elmt("tr");
+        var c0 = td(""); text(c0, PERF_CATS[c[0]] || c[0]); tr.appendChild(c0);
+        var c1 = td("Chiamate / elementi", "num"); text(c1, fmtNum(c[1], 0) + " / " + fmtNum(c[2], 0)); c1.appendChild(qb("M")); tr.appendChild(c1);
+        tr.appendChild(cellNum(td("Durata misurata", "num"), c[3] ? fmtMs(c[3]) : "n/d", c[3] ? "M" : "N"));
+        tr.appendChild(cellNum(td("Durata deleghe", "num"), c[4] ? fmtMs(c[4]) : "—", c[4] ? "S" : "N", "dall'avvio del turno al completamento, limite massimo"));
+        tr.appendChild(cellNum(td("Quota", "num"), "n/d", "N", "la piattaforma non misura la quota per singola operazione"));
+        var c5 = td("Volume dati", "num"); text(c5, fmtNum(c[5], 0) + " KB"); var s5 = elmt("span", "sub"); text(s5, "proxy, non consumo"); c5.appendChild(s5); tr.appendChild(c5);
+        var c6 = td("Errori", "num"); text(c6, fmtNum(c[6], 0)); tr.appendChild(c6);
+        return tr;
+      });
+      root.appendChild(perfTable(["Operazione", "Chiamate / elementi", "Durata misurata", "Durata deleghe", "Quota", "Volume dati", "Errori"], crow, [0, 1, 1, 1, 1, 1, 1]));
+      root.appendChild(barChart(cats.slice(0, 8).map(function (c) {
+        return { label: PERF_CATS[c[0]] || c[0], value: c[1], text: fmtNum(c[1], 0) + " chiamate", code: "M" };
+      })));
+      var n2 = elmt("p", "perf-note"); text(n2, "Ordinamento: " + (s.sort || "durata → chiamate → volume") + ". La quota per singola operazione non è misurata dalla piattaforma."); root.appendChild(n2);
+
+      // Attività
+      var acts = Array.isArray(s.acts) ? s.acts : [];
+      if (acts.length) {
+        var h7 = elmt("div", "perf-h3"); text(h7, "Attività per numero di operazioni · 7 giorni"); root.appendChild(h7);
+        root.appendChild(perfTable(["Attività", "Esecuzioni", "Operazioni", "Tempo comandi", "Errori"], acts.map(function (a) {
+          var tr = elmt("tr");
+          var c0 = td(""); text(c0, PERF_TRIG[a[0]] || a[0]); tr.appendChild(c0);
+          tr.appendChild(cellNum(td("Esecuzioni", "num"), fmtNum(a[1], 0), "M"));
+          tr.appendChild(cellNum(td("Operazioni", "num"), fmtNum(a[2], 0), "M"));
+          tr.appendChild(cellNum(td("Tempo comandi", "num"), a[3] ? fmtMs(a[3]) : "—", a[3] ? "M" : "N"));
+          var c4 = td("Errori", "num"); text(c4, fmtNum(a[4], 0)); tr.appendChild(c4);
+          return tr;
+        }), [0, 1, 1, 1, 1]));
+      }
+
+      // Andamento
+      var tr7 = perf.trend;
+      if (tr7 && Array.isArray(tr7.days) && tr7.bots) {
+        var h8 = elmt("div", "perf-h3"); text(h8, "Andamento giornaliero · quota 7 gg per Bot (giorni UTC)"); root.appendChild(h8);
+        root.appendChild(trendChart(tr7));
+      }
+      // API esterne
+      var h9 = elmt("div", "perf-h3"); text(h9, "API esterne"); root.appendChild(h9);
+      var api = Array.isArray(s.api) ? s.api : [];
+      if (!api.length) { var pa = elmt("p", "faint"); text(pa, "Nessuna API esterna registrata."); root.appendChild(pa); }
+      else {
+        root.appendChild(perfTable(["Bot", "Fornitore / modello", "Token in / out", "Costo"], api.map(function (a) {
+          var tr = elmt("tr");
+          var c0 = td(""); text(c0, a.bot); tr.appendChild(c0);
+          var c1 = td("Fornitore / modello"); text(c1, a.provider + " · " + a.model); tr.appendChild(c1);
+          tr.appendChild(cellNum(td("Token in / out", "num"), fmtNum(a.tokens_in, 0) + " / " + fmtNum(a.tokens_out, 0), "M"));
+          tr.appendChild(cellNum(td("Costo", "num"), fmtNum(a.cost, 4) + " " + (a.currency || ""), "M"));
+          return tr;
+        }), [0, 0, 1, 1]));
+      }
+      // Qualità e limiti
+      var h10 = elmt("div", "perf-h3"); text(h10, "Qualità dei dati"); root.appendChild(h10);
+      var pq = elmt("p", "perf-note");
+      text(pq, "Operazioni: " + fmtNum(q.ops || 0, 0) + " (con durata misurata: " + fmtNum(q.ops_ms_M || 0, 0) + "). Quota per esecuzione: derivata per " +
+        fmtNum(q.quota_D || 0, 0) + ", non disponibile per " + fmtNum(q.quota_N || 0, 0) + " (più esecuzioni nello stesso giorno: nessuna ripartizione inventata). Deleghe con durata stimata: " + fmtNum(q.deleg_S || 0, 0) + ".");
+      root.appendChild(pq);
+      var notes = Array.isArray(s.notes) ? s.notes : [];
+      if (notes.length) {
+        var ul = elmt("ul", "perf-notes");
+        notes.forEach(function (n) { var li = elmt("li"); text(li, n); ul.appendChild(li); });
+        root.appendChild(ul);
+      }
+    }
+
+    function trendChart(tr) {
+      var days = tr.days, names = Object.keys(tr.bots);
+      var w = 560, h = 190, padL = 30, padB = 34, padT = 10;
+      var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 " + w + " " + h); svg.setAttribute("class", "pchart");
+      var colW = (w - padL) / Math.max(1, days.length);
+      var max = 0;
+      days.forEach(function (d, i) {
+        var tot = 0; names.forEach(function (n) { var c = tr.bots[n][i]; tot += (c && c[3]) || 0; }); max = Math.max(max, tot);
+      });
+      max = Math.max(max, 1);
+      days.forEach(function (d, i) {
+        var x = padL + i * colW + colW * 0.2, y = h - padB, runs = 0;
+        names.forEach(function (n) {
+          var c = tr.bots[n][i]; if (!c) return;
+          runs += c[0] || 0;
+          var v = c[3] || 0; if (!v) return;
+          var bh = (h - padB - padT) * v / max;
+          var r = document.createElementNS(svg.namespaceURI, "rect");
+          r.setAttribute("x", x); r.setAttribute("y", y - bh); r.setAttribute("width", colW * 0.6); r.setAttribute("height", bh);
+          r.setAttribute("fill", botColor(n));
+          var t = document.createElementNS(svg.namespaceURI, "title"); t.textContent = n + ": " + v + "% (mis.) · " + c[0] + " esecuzioni"; r.appendChild(t);
+          svg.appendChild(r); y -= bh;
+        });
+        var lab = document.createElementNS(svg.namespaceURI, "text");
+        lab.setAttribute("x", x); lab.setAttribute("y", h - padB + 14); lab.textContent = d.slice(8, 10) + "/" + d.slice(5, 7);
+        svg.appendChild(lab);
+        var rl = document.createElementNS(svg.namespaceURI, "text");
+        rl.setAttribute("x", x); rl.setAttribute("y", h - padB + 28); rl.textContent = runs + " es.";
+        svg.appendChild(rl);
+      });
+      var wrap = elmt("div");
+      wrap.appendChild(svg);
+      var lg = elmt("div", "perf-legend");
+      names.forEach(function (n) {
+        var sp = elmt("span"); var dot = elmt("span"); dot.style.cssText = "width:10px;height:10px;border-radius:3px;display:inline-block;background:" + botColor(n);
+        sp.appendChild(dot); var t = elmt("span"); text(t, n); sp.appendChild(t); lg.appendChild(sp);
+      });
+      wrap.appendChild(lg);
+      return wrap;
+    }
+
+    function runTitle(r) { return r.label || PERF_TRIG[r.trig] || "Esecuzione"; }
+    function opCost(o) { return Math.max(o[5] || 0, o[6] || 0); }
+
+    function renderPerfBot(root, name) {
+      var b = botRows().filter(function (x) { return x.name === name; })[0];
+      if (b) {
+        var p = elmt("p", "muted");
+        text(p, b.runs7 + " esecuzioni negli ultimi 7 giorni · quota 7 gg " + fmtPct(b.s7, b.s7Lt) + " (misurato) · settimana " + fmtLim(b.lim, b.limLt) + " del limite (derivato).");
+        root.appendChild(p);
+      }
+      var list = Object.keys(perf.runs).map(function (k) { return perf.runs[k]; }).filter(function (r) { return r.bot === name; });
+      list.sort(function (a, c) { return c.t - a.t; });
+      if (!list.length) { var e = elmt("p", "faint"); text(e, "Nessuna esecuzione salvata per questo Bot."); root.appendChild(e); return; }
+      var shown = list.slice(0, perfView.limit);
+      root.appendChild(perfTable(["Esecuzione", "Inizio", "Operazioni", "Durata", "Quota", "Esito"], shown.map(function (r) {
+        var tr = elmt("tr", "click" + (r.mon ? " mon" : ""));
+        tr.addEventListener("click", function () { perfGo("run", name, r.id); });
+        var c0 = td(""); text(c0, runTitle(r) + (r.mon ? " · monitoraggio" : ""));
+        var top = r.ops[0];
+        if (top) { var sb = elmt("span", "sub"); text(sb, "più dispendiosa: " + (PERF_CATS[top[0]] || top[0])); c0.appendChild(sb); }
+        tr.appendChild(c0);
+        tr.appendChild(cellNum(td("Inizio"), r.t ? fmtDateTime(r.t) : "—", r.t ? "M" : "N", "al minuto"));
+        var n = 0; r.ops.forEach(function (o) { n += o[3] || 0; });
+        tr.appendChild(cellNum(td("Operazioni", "num"), fmtNum(n, 0), "M"));
+        tr.appendChild(cellNum(td("Durata", "num"), r.dur != null ? fmtMs(r.dur * 1000) : "n/d", r.dur != null ? r.durQ : "N"));
+        var qc = td("Quota", "num");
+        if (r.quota) cellNum(qc, r.quota[0] != null ? fmtLim(r.quota[0], r.quota[2]) + " lim." : fmtPct(r.quota[1], r.quota[2]) + " 7gg", "D", "unica esecuzione registrata del giorno");
+        else cellNum(qc, "n/d", "N", "più esecuzioni nel giorno: nessuna ripartizione");
+        tr.appendChild(qc);
+        var oc = td("Esito"); text(oc, PERF_OUT[r.out] || r.out); tr.appendChild(oc);
+        return tr;
+      }), [0, 0, 1, 1, 1, 0]));
+      if (list.length > shown.length) {
+        var more = elmt("button", "perf-more"); more.type = "button"; text(more, "Mostra altre (" + (list.length - shown.length) + ")");
+        more.addEventListener("click", function () { perfView.limit += 100; renderPerf(); });
+        root.appendChild(more);
+      }
+    }
+
+    function renderPerfRun(root, r) {
+      var head = elmt("div", "perf-runhead");
+      function line(label, value, code, title) {
+        var d = elmt("div"); var a = elmt("span", "faint"); text(a, label + ": "); d.appendChild(a);
+        var v = elmt("span"); text(v, value); d.appendChild(v); if (code) d.appendChild(qb(code, title)); head.appendChild(d);
+      }
+      line("Bot", r.bot);
+      line("Attività", runTitle(r) + " · " + (PERF_TRIG[r.trig] || r.trig));
+      line("Inizio", r.t ? fmtDateTime(r.t) : "—", r.t ? "M" : "N", "precisione al minuto");
+      line("Durata", r.dur != null ? fmtMs(r.dur * 1000) : "non disponibile", r.dur != null ? r.durQ : "N",
+        r.dur != null ? "fine da evento di stato" : "nessun evento di fine registrato");
+      if (r.quota) line("Quota", (r.quota[0] != null ? fmtLim(r.quota[0], r.quota[2]) + " del limite settimanale" : "") +
+        (r.quota[1] != null ? (r.quota[0] != null ? " · " : "") + fmtPct(r.quota[1], r.quota[2]) + " dell'uso Grok Bot 7 gg" : ""), "D", "unica esecuzione registrata del giorno");
+      else line("Quota", "non disponibile (più esecuzioni nello stesso giorno, nessuna ripartizione inventata)", "N");
+      line("Esito", PERF_OUT[r.out] || r.out);
+      root.appendChild(head);
+      var ops = r.ops.slice().sort(function (a, b) { return (opCost(b) - opCost(a)) || ((b[3] || 0) - (a[3] || 0)) || ((b[7] || 0) - (a[7] || 0)); });
+      if (!ops.length) { var e = elmt("p", "faint"); text(e, "Nessuna operazione registrata per questa esecuzione (dati dai soli eventi di stato)."); root.appendChild(e); return; }
+      root.appendChild(perfTable(["Operazione", "Strumento / modello", "Chiamate / elementi", "Durata misurata", "Quota", "Risultato"], ops.map(function (o) {
+        var tr = elmt("tr");
+        var c0 = td(""); text(c0, PERF_CATS[o[0]] || o[0]); tr.appendChild(c0);
+        var c1 = td("Strumento / modello"); text(c1, o[1] + (o[2] ? " · " + o[2] : "")); tr.appendChild(c1);
+        var c2 = td("Chiamate / elementi", "num"); text(c2, fmtNum(o[3], 0) + " / " + fmtNum(o[4], 0)); c2.appendChild(qb("M"));
+        if (o[9]) { var rs = elmt("span", "sub"); text(rs, o[9] + " ripetute"); c2.appendChild(rs); }
+        tr.appendChild(c2);
+        var c3 = td("Durata misurata", "num");
+        if (o[5] != null) cellNum(c3, fmtMs(o[5]), "M");
+        else if (o[6] != null) cellNum(c3, "≤ " + fmtMs(o[6]), "S", "delega: dall'inizio del turno al completamento");
+        else cellNum(c3, "n/d", "N");
+        var vk = elmt("span", "sub"); text(vk, "volume " + fmtNum(o[7] || 0, 1) + " KB (proxy)"); c3.appendChild(vk);
+        tr.appendChild(c3);
+        tr.appendChild(cellNum(td("Quota", "num"), "n/d", "N", "nessuna misura per singola operazione"));
+        var c5 = td("Risultato");
+        text(c5, (PERF_RES[o[11]] || o[11] || "—") + (o[8] ? " · " + o[8] + " errori" : "") + (o[10] ? " · " + o[10] + " attese" : ""));
+        tr.appendChild(c5);
+        return tr;
+      }), [0, 0, 1, 1, 1, 0]));
+      var n = elmt("p", "perf-note"); text(n, "Ordinate dalla più dispendiosa: durata (misurata; per le deleghe stima massima) → numero di chiamate → volume dati."); root.appendChild(n);
+    }
+
+    var perfDirty = false;
     /* ---------- Event ingest ---------- */
     function ensureBot(name, group) {
       if (!name) return null;
@@ -1036,6 +1593,10 @@
       var iso = payload.ts ? parseTs(payload.ts, 0) : 0;
       if (iso) time = iso;
       seen[obj.id] = 1;
+      if (typeof payload.type === "string" && payload.type.indexOf("perf_") === 0) {
+        if (perfIngest(payload)) { perfPersist(); perfDirty = true; }
+        payload = { type: payload.type };
+      }
       events.push({ id: String(obj.id), time: time, payload: payload });
       if (time > lastEventAt) lastEventAt = time;
       return { payload: payload, time: time };
@@ -1044,6 +1605,7 @@
       var result = ingestNtfy(obj);
       if (!result) return false;
       persistCache();
+      if (perfDirty) { perfDirty = false; renderPerf(); }
       var pulse = null;
       if (fromLive && result.payload && result.payload.bot && !result.payload.type) pulse = result.payload.bot;
       rebuildState(pulse);
@@ -2236,6 +2798,8 @@
       conn.streamFails = 0;
       conn.backoff = 1000;
       loadCache();
+      perfLoad();
+      renderPerf();
       rebuildState(null);
       renderAll();
       resizeCanvas();
