@@ -616,6 +616,11 @@
       .ptable td[data-l]::before { content: attr(data-l) ": "; color: var(--ink-faint); font-size: 11px; }
       .ptable td:first-child { font-weight: 650; }
     }
+    .tk { display: inline-block; font-size: 10px; font-weight: 750; border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; }
+    .tk-c { color: var(--done); background: var(--done-bg); }
+    .tk-p { color: var(--waiting); background: var(--waiting-bg); }
+    .tk-n { color: var(--idle); background: var(--idle-bg); border: 1px dashed var(--ink-faint); }
+    .perf-tabs { margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -958,8 +963,13 @@
     /* ---------- Prestazioni e consumi (dati periodici, non live) ---------- */
     var LS_PERF = "regia.dashboard.perf.v1:";
     var PERF_MAX_RUNS = 4000;
-    var perf = { summary: null, trend: null, runs: Object.create(null) };
-    var perfView = { level: "overview", bot: null, run: null, sort: "quota", limit: 60 };
+    var perf = { summary: null, trend: null, runs: Object.create(null), tok: { summary: null, runs: Object.create(null) } };
+    var perfView = { level: "overview", bot: null, run: null, sort: "quota", limit: 60, runTab: "ops", tokType: "tot" };
+    var PERF_AREAS = ["monitoraggio", "aggiornamento dashboard", "sviluppo", "delega", "coordinamento"];  // stesso ordine di AREAS in collect.py
+    var TOK_TYPES = [["tot", "Totale", -1], ["pr", "Input nuovi", 4], ["cp", "Input in cache", 5], ["cw", "Scrittura cache", 6], ["co", "Output", 7]];
+    var TOK_CLS = { c: ["Certa", "tk-c", "continuità della cache e passi del modello allineati 1:1 al transcript"],
+      p: ["Probabile", "tk-p", "attribuzione per finestra temporale e un solo Bot candidato"],
+      n: ["N/D", "tk-n", "non attribuibile"] };
     var PERF_CATS = {
       RW: "Ricerca web", SC: "Siti consultati", DOC: "Lettura PDF/documenti", IMG: "Analisi foto/immagini",
       PRZ: "Confronti prezzi/prodotti", AI: "Elaborazione AI delegata", CMD: "Comandi e script",
@@ -977,7 +987,7 @@
     var Q_SHORT = { M: "mis.", D: "der.", S: "stima", N: "n/d" };
 
     function perfLoad() {
-      perf = { summary: null, trend: null, runs: Object.create(null) };
+      perf = { summary: null, trend: null, runs: Object.create(null), tok: { summary: null, runs: Object.create(null) } };
       var raw = storeGet(LS_PERF + topic);
       if (!raw) return;
       try {
@@ -988,6 +998,10 @@
           if (d.runs && typeof d.runs === "object") {
             Object.keys(d.runs).forEach(function (k) { perf.runs[k] = d.runs[k]; });
           }
+          if (d.tok && typeof d.tok === "object") {
+            perf.tok.summary = d.tok.summary || null;
+            if (d.tok.runs && typeof d.tok.runs === "object") Object.keys(d.tok.runs).forEach(function (k) { perf.tok.runs[k] = d.tok.runs[k]; });
+          }
         }
       } catch (e) {}
     }
@@ -997,7 +1011,12 @@
         ids.sort(function (a, b) { return (perf.runs[a].t || 0) - (perf.runs[b].t || 0); });
         ids.slice(0, ids.length - PERF_MAX_RUNS).forEach(function (k) { delete perf.runs[k]; });
       }
-      storeSet(LS_PERF + topic, JSON.stringify({ summary: perf.summary, trend: perf.trend, runs: perf.runs }));
+      var tids = Object.keys(perf.tok.runs);
+      if (tids.length > PERF_MAX_RUNS) {
+        tids.sort(function (a, b) { return (perf.tok.runs[a].t || 0) - (perf.tok.runs[b].t || 0); });
+        tids.slice(0, tids.length - PERF_MAX_RUNS).forEach(function (k) { delete perf.tok.runs[k]; });
+      }
+      storeSet(LS_PERF + topic, JSON.stringify({ summary: perf.summary, trend: perf.trend, runs: perf.runs, tok: perf.tok }));
     }
     function perfIngest(payload) {
       if (!payload || typeof payload !== "object") return false;
@@ -1024,10 +1043,33 @@
             trig: String(r[3] || ""), dur: typeof r[4] === "number" ? r[4] : null, durQ: String(r[5] || "N"),
             out: String(r[6] || "i"), label: r[7] ? String(r[7]).slice(0, 60) : "",
             quota: Array.isArray(r[8]) ? r[8] : null, mon: r[9] ? 1 : 0,
-            ops: Array.isArray(r[10]) ? r[10] : []
+            ops: Array.isArray(r[10]) ? r[10] : [],
+            area: typeof r[11] === "number" ? r[11] : null, sub: r[12] ? 1 : 0
           };
         });
         return true;
+      }
+      if (payload.type === "perf_tokens") {
+        if (payload.k === "sum") {
+          if (!perf.tok.summary || parseTs(perf.tok.summary.ts, 0) <= ts) perf.tok.summary = payload;
+          return true;
+        }
+        if (payload.k === "runs" && Array.isArray(payload.runs)) {
+          var tn = Array.isArray(payload.bots) ? payload.bots : [];
+          payload.runs.forEach(function (r) {
+            if (!Array.isArray(r) || !r[0]) return;
+            var id = String(r[0]).slice(0, 40);
+            var prev = perf.tok.runs[id];
+            if (prev && prev.ts > ts) return;
+            perf.tok.runs[id] = {
+              id: id, ts: ts, bot: String(tn[r[1]] || "?").slice(0, 40),
+              t: typeof r[2] === "number" ? r[2] * 60000 : 0, dur: typeof r[3] === "number" ? r[3] : null,
+              cls: r[4] && typeof r[4] === "object" ? r[4] : {}, ops: Array.isArray(r[5]) ? r[5] : [],
+              na: Array.isArray(r[6]) ? r[6] : [0, 0], oth: Array.isArray(r[7]) ? r[7] : [0, 0]
+            };
+          });
+          return true;
+        }
       }
       return false;
     }
@@ -1243,6 +1285,8 @@
       text(note, "Quota 7 gg: quota dell'uso Grok Bot negli ultimi 7 giorni (giorni UTC). Settimana: percentuale del limite settimanale usata dal Bot. Il monitoraggio è escluso dalle righe dei Bot e mostrato a parte. Tocca un Bot per le sue esecuzioni.");
       root.appendChild(note);
 
+      renderTokOverview(root);
+
       var grid = elmt("div", "perf-grid");
       var left = elmt("div"), right = elmt("div");
       grid.appendChild(left); grid.appendChild(right);
@@ -1370,7 +1414,95 @@
       return wrap;
     }
 
-    function runTitle(r) { return r.label || PERF_TRIG[r.trig] || "Esecuzione"; }
+    function runTitle(r) { return r.label || (r.sub ? "Sottoagente" : "") || PERF_TRIG[r.trig] || "Esecuzione"; }
+    function tokSum(v) { return Array.isArray(v) ? (v[1] || 0) + (v[2] || 0) + (v[3] || 0) + (v[4] || 0) : 0; }
+    function tokOf(v, type, base) {  // v: [n, pr, cp, cw, co] (base 1) oppure operazione (base 4)
+      if (!Array.isArray(v)) return 0;
+      var b = base == null ? 1 : base;
+      if (type === "tot") return (v[b] || 0) + (v[b + 1] || 0) + (v[b + 2] || 0) + (v[b + 3] || 0);
+      var i = { pr: 0, cp: 1, cw: 2, co: 3 }[type];
+      return v[b + i] || 0;
+    }
+    function fmtTok(n) {
+      if (n == null) return "—";
+      if (n >= 1e6) return fmtNum(n / 1e6, n >= 1e7 ? 1 : 2) + " M";
+      if (n >= 1e4) return fmtNum(n / 1e3, 0) + " k";
+      return fmtNum(n, 0);
+    }
+    function clsBadge(c) {
+      var d = TOK_CLS[c] || TOK_CLS.n;
+      var s = elmt("span", "tk " + d[1]); text(s, d[0]); s.title = d[2]; return s;
+    }
+    function tokImportLabel(ts) {
+      var p = elmt("p", "perf-note");
+      if (!ts) { text(p, "CSV ufficiale non ancora importato."); return p; }
+      var r = ts.range || [];
+      text(p, "CSV ufficiale importato il " + fmtDateTime(parseTs(ts.imp, 0)) +
+        (r[0] ? " · intervallo " + fmtDateTime(parseTs(r[0], 0)) + " – " + fmtDateTime(parseTs(r[1], 0)) : "") +
+        ". Token misurati dalla piattaforma; l'attribuzione alle esecuzioni è certa, probabile o non disponibile. Nessuna conversione in quota.");
+      return p;
+    }
+    function tokTypeBar() {
+      var bar = elmt("div", "perf-sort");
+      TOK_TYPES.forEach(function (x) {
+        var b = elmt("button"); b.type = "button"; text(b, x[1]);
+        b.setAttribute("aria-pressed", perfView.tokType === x[0] ? "true" : "false");
+        b.addEventListener("click", function () { perfView.tokType = x[0]; renderPerf(); });
+        bar.appendChild(b);
+      });
+      return bar;
+    }
+    function renderTokOverview(parent) {
+      var root = elmt("div", "perf-tok"); parent.appendChild(root);
+      var ts = perf.tok.summary;
+      var h = elmt("div", "perf-h3"); text(h, "Token per Bot · CSV ufficiale"); root.appendChild(h);
+      if (!ts || !Array.isArray(ts.bots)) { root.appendChild(tokImportLabel(null)); return; }
+      root.appendChild(tokTypeBar());
+      var ty = perfView.tokType;
+      var rows = ts.bots.map(function (b) {
+        return { name: b[0], runs: b[1], c: b[2], p: b[3], areas: b[4] || {}, v: tokOf(b[2], ty) + tokOf(b[3], ty) };
+      }).sort(function (a, b) { return b.v - a.v; });
+      var max = Math.max.apply(null, rows.map(function (r) { return r.v; }).concat([1]));
+      root.appendChild(barChart(rows.map(function (r) {
+        return { label: r.name, value: r.v, text: fmtTok(r.v), code: "M", color: botColor(r.name) };
+      }), "", max));
+      var trs = rows.map(function (r) {
+        var tr = elmt("tr", "click");
+        tr.addEventListener("click", function () { perfGo("bot", r.name, null); });
+        var c0 = td(""); text(c0, r.name); tr.appendChild(c0);
+        tr.appendChild(cellNum(td("Esecuzioni con token", "num"), fmtNum(r.runs, 0), "M"));
+        var c1 = td("Certa", "num"); text(c1, fmtTok(tokOf(r.c, ty))); c1.appendChild(clsBadge("c")); tr.appendChild(c1);
+        var c2 = td("Probabile", "num"); text(c2, fmtTok(tokOf(r.p, ty))); c2.appendChild(clsBadge("p")); tr.appendChild(c2);
+        var c3 = td("Totale attribuito", "num"); text(c3, fmtTok(r.v)); tr.appendChild(c3);
+        return tr;
+      });
+      var tr = elmt("tr", "mon");
+      var n0 = td(""); text(n0, "Non attribuibili / altri prodotti"); tr.appendChild(n0);
+      var n1 = td("Esecuzioni con token", "num"); text(n1, fmtNum((ts.na || [0])[0], 0) + " chiamate"); tr.appendChild(n1);
+      tr.appendChild(td("Certa", "num"));
+      tr.appendChild(td("Probabile", "num"));
+      var n3 = td("Totale attribuito", "num"); text(n3, fmtTok(tokOf(ts.na, ty))); n3.appendChild(clsBadge("n")); tr.appendChild(n3);
+      trs.push(tr);
+      root.appendChild(perfTable(["Bot", "Esecuzioni con token", "Certa", "Probabile", "Totale attribuito"], trs, [0, 1, 1, 1, 1]));
+      var m = ts.mon || {};
+      var hm = elmt("div", "perf-h3"); text(hm, "Costo del monitoraggio · voci separate"); root.appendChild(hm);
+      var sm = perf.summary && perf.summary.mon || {};
+      var mrows = [
+        ["(a) Routine «" + (sm.routine || "monitoraggio") + "»", sm.q === "D" ? fmtPct(sm.share, sm.lt1) + " dell'uso Grok Bot della settimana" : "non ancora nel report dei consumi", sm.q === "D" ? "D" : "N"],
+        ["(b) Thread di monitoraggio di Regia (" + fmtNum(m.b_runs || 0, 0) + " esecuzioni)", fmtTok(tokOf(m.b, ty)) + " token", "M"],
+        ["(c) Aggiornamento e pubblicazione dashboard (" + fmtNum(m.c_runs || 0, 0) + " esecuzioni)", fmtTok(tokOf(m.c, ty)) + " token", "M"]
+      ].map(function (x) {
+        var tr = elmt("tr", "mon");
+        var a = td(""); text(a, x[0]); tr.appendChild(a);
+        tr.appendChild(cellNum(td("Valore", "num"), x[1], x[2], x[2] === "M" ? "token dal CSV ufficiale, attribuzione certa o probabile" : ""));
+        return tr;
+      });
+      root.appendChild(perfTable(["Voce", "Valore"], mrows, [0, 1]));
+      var nn = elmt("p", "perf-note");
+      text(nn, "Le tre voci non si sommano e non entrano nelle righe degli altri Bot; nessuna è convertita in percentuale. Sviluppo della dashboard: " + fmtTok(tokOf(m.dev, ty)) + " token, separato dal monitoraggio.");
+      root.appendChild(nn);
+      root.appendChild(tokImportLabel(ts));
+    }
     function opCost(o) { return Math.max(o[5] || 0, o[6] || 0); }
 
     function renderPerfBot(root, name) {
@@ -1387,7 +1519,9 @@
       root.appendChild(perfTable(["Esecuzione", "Inizio", "Operazioni", "Durata", "Quota", "Esito"], shown.map(function (r) {
         var tr = elmt("tr", "click" + (r.mon ? " mon" : ""));
         tr.addEventListener("click", function () { perfGo("run", name, r.id); });
-        var c0 = td(""); text(c0, runTitle(r) + (r.mon ? " · monitoraggio" : ""));
+        var c0 = td(""); text(c0, runTitle(r) + (r.area != null && PERF_AREAS[r.area] ? " · " + PERF_AREAS[r.area] : (r.mon ? " · monitoraggio" : "")));
+        var tk = perf.tok.runs[r.id];
+        if (tk) { var tks = elmt("span", "sub"); text(tks, "token (CSV): " + fmtTok(tokSum(tk.cls.c) + tokSum(tk.cls.p))); c0.appendChild(tks); }
         var top = r.ops[0];
         if (top) { var sb = elmt("span", "sub"); text(sb, "più dispendiosa: " + (PERF_CATS[top[0]] || top[0])); c0.appendChild(sb); }
         tr.appendChild(c0);
@@ -1409,6 +1543,35 @@
       }
     }
 
+    function renderRunTokens(root, r) {
+      var tk = perf.tok.runs[r.id];
+      if (!tk) {
+        var e = elmt("p", "faint");
+        text(e, "Nessun token attribuito a questa esecuzione: è fuori dall'intervallo del CSV importato, i suoi token sono dentro la delega dell'esecuzione che l'ha lanciata, oppure non è attribuibile con certezza.");
+        root.appendChild(e); root.appendChild(tokImportLabel(perf.tok.summary)); return;
+      }
+      root.appendChild(tokTypeBar());
+      var ty = perfView.tokType, tyLabel = TOK_TYPES.filter(function (x) { return x[0] === ty; })[0][1];
+      var ops = tk.ops.slice().sort(function (a, b) { return tokOf(b, ty, 4) - tokOf(a, ty, 4); });
+      var KIND = { chat: "Chat principale del Bot", delega: "Delega", aux: "Chiamate ausiliarie del turno" };
+      root.appendChild(perfTable(["Operazione", "Chiamate", "Token · " + tyLabel, "Durata (CSV)", "Attribuzione"], ops.map(function (o) {
+        var tr = elmt("tr");
+        var c0 = td(""); text(c0, (KIND[o[0]] || o[0]) + (o[1] ? " · " + o[1] : "")); tr.appendChild(c0);
+        tr.appendChild(cellNum(td("Chiamate", "num"), fmtNum(o[3], 0), "M"));
+        var c2 = td("Token", "num"); text(c2, fmtTok(tokOf(o, ty, 4)));
+        if (ty === "tot") { var sb = elmt("span", "sub"); text(sb, "in " + fmtTok(o[4]) + " · cache " + fmtTok(o[5]) + " · scr. " + fmtTok(o[6]) + " · out " + fmtTok(o[7])); c2.appendChild(sb); }
+        c2.appendChild(qb("M", "dal CSV ufficiale")); tr.appendChild(c2);
+        tr.appendChild(cellNum(td("Durata (CSV)", "num"), o[8] != null ? fmtMs(o[8] * 1000) : "n/d", o[8] != null ? "M" : "N", "dalla prima all'ultima chiamata nel CSV"));
+        var c4 = td("Attribuzione"); c4.appendChild(clsBadge(o[2])); tr.appendChild(c4);
+        return tr;
+      }), [0, 1, 1, 1, 0]));
+      var p = elmt("p", "perf-note");
+      text(p, "Nella finestra dell'esecuzione (" + fmtDateTime(tk.t) + ", " + fmtMs((tk.dur || 0) * 1000) + "): non attribuibili / altri Bot nella finestra: " +
+        fmtNum(tk.na[0] || 0, 0) + " chiamate (" + fmtTok(tk.na[1] || 0) + " token) / " + fmtNum(tk.oth[0] || 0, 0) + " chiamate (" + fmtTok(tk.oth[1] || 0) + " token). Ordinate per token del tipo scelto.");
+      root.appendChild(p);
+      root.appendChild(tokImportLabel(perf.tok.summary));
+    }
+
     function renderPerfRun(root, r) {
       var head = elmt("div", "perf-runhead");
       function line(label, value, code, title) {
@@ -1424,7 +1587,20 @@
         (r.quota[1] != null ? (r.quota[0] != null ? " · " : "") + fmtPct(r.quota[1], r.quota[2]) + " dell'uso Grok Bot 7 gg" : ""), "D", "unica esecuzione registrata del giorno");
       else line("Quota", "non disponibile (più esecuzioni nello stesso giorno, nessuna ripartizione inventata)", "N");
       line("Esito", PERF_OUT[r.out] || r.out);
+      if (r.area != null && PERF_AREAS[r.area]) line("Area", PERF_AREAS[r.area] + (r.mon ? " · esclusa dagli aggregati dei Bot" : ""));
       root.appendChild(head);
+      var tabs = elmt("div", "perf-sort perf-tabs");
+      tabs.setAttribute("role", "tablist");
+      [["ops", "Operazioni"], ["tok", "Token (CSV ufficiale)"]].forEach(function (x) {
+        var b = elmt("button"); b.type = "button"; text(b, x[1]);
+        b.setAttribute("role", "tab");
+        b.setAttribute("aria-pressed", perfView.runTab === x[0] ? "true" : "false");
+        b.setAttribute("aria-selected", perfView.runTab === x[0] ? "true" : "false");
+        b.addEventListener("click", function () { perfView.runTab = x[0]; renderPerf(); });
+        tabs.appendChild(b);
+      });
+      root.appendChild(tabs);
+      if (perfView.runTab === "tok") { renderRunTokens(root, r); return; }
       var ops = r.ops.slice().sort(function (a, b) { return (opCost(b) - opCost(a)) || ((b[3] || 0) - (a[3] || 0)) || ((b[7] || 0) - (a[7] || 0)); });
       if (!ops.length) { var e = elmt("p", "faint"); text(e, "Nessuna operazione registrata per questa esecuzione (dati dai soli eventi di stato)."); root.appendChild(e); return; }
       root.appendChild(perfTable(["Operazione", "Strumento / modello", "Chiamate / elementi", "Durata misurata", "Quota", "Risultato"], ops.map(function (o) {
